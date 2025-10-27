@@ -1,0 +1,236 @@
+from graphics import *
+import random
+import time
+import math
+
+WINDOW_WIDTH = 900
+WINDOW_HEIGHT = 700
+ROUNDS = 3
+TIMEOUT = 3.0
+RING_SIZE = 18
+DOT_RADIUS = 7
+MAX_POINTS = 100
+
+def center_window(win, width, height):
+    try:
+        screen_width = win.master.winfo_screenwidth()
+        screen_height = win.master.winfo_screenheight()
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        win.master.geometry(str(width) + "x" + str(height) + "+" + str(x) + "+" + str(y))
+    except:
+        pass
+
+def draw_target(win, center, ring_size):
+    colors = ["yellow", "red", "blue", "black", "white"]
+    shapes = []
+    for i in range(5, 0, -1):
+        radius = ring_size * i
+        circle = Circle(center, radius)
+        circle.setFill(colors[5 - i])
+        circle.setOutline(colors[5 - i])
+        circle.draw(win)
+        shapes.append(circle)
+    return shapes
+
+def random_point_inside_circle(center, radius):
+    r = radius * math.sqrt(random.random())
+    angle = random.uniform(0, 2 * math.pi)
+    x = center.getX() + r * math.cos(angle)
+    y = center.getY() + r * math.sin(angle)
+    return Point(x, y)
+
+def wait_for_click(win, timeout):
+    start = time.time()
+    while True:
+        p = win.checkMouse()
+        if p is not None:
+            return p, time.time() - start, False
+        if time.time() - start >= timeout:
+            return None, timeout, True
+        time.sleep(0.01)
+
+def undraw_all(shapes):
+    for s in shapes:
+        try:
+            s.undraw()
+        except:
+            pass
+    shapes.clear()
+
+def main():
+    win = GraphWin("Two Player Target", WINDOW_WIDTH, WINDOW_HEIGHT)
+    win.setBackground("lightgray")
+    center_window(win, WINDOW_WIDTH, WINDOW_HEIGHT)
+
+    title = Text(Point(WINDOW_WIDTH / 2, 40), "Two Player Target")
+    title.setSize(22)
+    title.setStyle("bold")
+    title.draw(win)
+
+    line_y = 80
+    line_step = 25
+    lines = [
+        "HOW TO PLAY:",
+        "1. A target with a GREEN dot will appear.",
+        "2. You have 3 seconds to click close to the GREEN dot.",
+        "3. The closer your click is to the dot, the more points you earn (0-100).",
+        "4. The player with the most total points wins!",
+        "If the points are the same, the faster player wins."
+    ]
+    for text_line in lines:
+        t = Text(Point(WINDOW_WIDTH / 2, line_y), text_line)
+        t.setSize(14)
+        t.draw(win)
+        line_y = line_y + line_step
+
+    start_text = Text(Point(WINDOW_WIDTH / 2, line_y + 40), "Click anywhere to start!")
+    start_text.setSize(16)
+    start_text.setTextColor("blue")
+    start_text.draw(win)
+
+    win.getMouse()
+    start_text.undraw()
+
+    last_instruction_y = line_y - line_step
+    round_y = last_instruction_y + 30
+    round_text = Text(Point(WINDOW_WIDTH / 2, round_y), "")
+    round_text.setSize(18)
+    round_text.draw(win)
+
+    countdown_y = round_y + 40
+
+    scoreboard = Text(Point(WINDOW_WIDTH / 2, WINDOW_HEIGHT - 70), "")
+    scoreboard.setSize(16)
+    scoreboard.setTextColor("darkblue")
+    scoreboard.draw(win)
+
+    status = Text(Point(WINDOW_WIDTH / 2, WINDOW_HEIGHT - 40), "")
+    status.setSize(16)
+    status.draw(win)
+
+    players = ["Player 1", "Player 2"]
+    scores = [0, 0]
+    total_times = [0.0, 0.0]
+
+    def update_scoreboard():
+        text = "P1: " + str(scores[0]) + " pts (" + str(round(total_times[0], 2)) + "s)   |   " \
+               + "P2: " + str(scores[1]) + " pts (" + str(round(total_times[1], 2)) + "s)"
+        scoreboard.setText(text)
+
+    update_scoreboard()
+
+    drawn = []
+
+    def countdown():
+        c = Text(Point(WINDOW_WIDTH / 2, countdown_y), "3")
+        c.setSize(28)
+        c.draw(win)
+        time.sleep(0.6)
+        c.setText("2")
+        time.sleep(0.6)
+        c.setText("1")
+        time.sleep(0.6)
+        c.undraw()
+
+    outer_radius = RING_SIZE * 5
+    safe_margin = outer_radius + 30
+    min_target_y = int(countdown_y + 60)
+
+    for round_num in range(1, ROUNDS + 1):
+        round_text.setText("Round " + str(round_num) + " of " + str(ROUNDS))
+
+        for i in range(2):
+            player_name = players[i]
+            status.setTextColor("black")
+            status.setText(player_name + ": Get ready...")
+            countdown()
+            status.setText("")
+
+            center_x = random.randint(safe_margin, WINDOW_WIDTH - safe_margin)
+            center_y = random.randint(max(safe_margin, min_target_y), WINDOW_HEIGHT - safe_margin)
+            center = Point(center_x, center_y)
+
+            target_parts = draw_target(win, center, RING_SIZE)
+            drawn.extend(target_parts)
+
+            dot_center = random_point_inside_circle(center, outer_radius - DOT_RADIUS)
+            dot = Circle(dot_center, DOT_RADIUS)
+            dot.setFill("green")
+            dot.setOutline("green")
+            dot.draw(win)
+            drawn.append(dot)
+
+            hint = Text(Point(WINDOW_WIDTH / 2, WINDOW_HEIGHT - 100),
+                        player_name + ": Click the GREEN dot! (" + str(int(TIMEOUT)) + "s)")
+            hint.setSize(16)
+            hint.draw(win)
+            drawn.append(hint)
+
+            click, elapsed, timed_out = wait_for_click(win, TIMEOUT)
+            gained = 0
+
+            if not timed_out and click is not None:
+                dx = click.getX() - center.getX()
+                dy = click.getY() - center.getY()
+                dist_center = math.sqrt(dx * dx + dy * dy)
+                if dist_center <= outer_radius:
+                    d_dot = math.sqrt((click.getX() - dot_center.getX()) ** 2 + (click.getY() - dot_center.getY()) ** 2)
+                    accuracy = max(0.0, 1.0 - (d_dot / outer_radius))
+                    gained = int(round(accuracy * MAX_POINTS))
+                    total_times[i] = total_times[i] + elapsed
+                    status.setTextColor("green")
+                    status.setText(player_name + ": +" + str(gained) + " pts in " + str(round(elapsed, 2)) + "s")
+                else:
+                    total_times[i] = total_times[i] + elapsed
+                    status.setTextColor("red")
+                    status.setText(player_name + ": Missed the target! (0 pts)")
+            else:
+                total_times[i] = total_times[i] + TIMEOUT
+                status.setTextColor("red")
+                status.setText(player_name + ": TIMEOUT (0 pts)")
+
+            scores[i] = scores[i] + gained
+            update_scoreboard()
+
+            undraw_all(drawn)
+            time.sleep(0.8)
+            status.setText("")
+
+
+    round_text.undraw()
+    scoreboard.undraw()
+    status.undraw()
+    title.undraw()
+
+    end_rect = Rectangle(Point(0, 0), Point(WINDOW_WIDTH, WINDOW_HEIGHT))
+    end_rect.setFill("lightgray")
+    end_rect.setOutline("lightgray")
+    end_rect.draw(win)
+
+    if scores[0] > scores[1]:
+        winner = "Player 1"
+    elif scores[1] > scores[0]:
+        winner = "Player 2"
+    else:
+        if abs(total_times[0] - total_times[1]) < 0.01:
+            winner = "It's a tie!"
+        elif total_times[0] < total_times[1]:
+            winner = "Player 1 (faster)"
+        else:
+            winner = "Player 2 (faster)"
+
+    result_text = "GAME OVER\n\n" + \
+                  "Player 1 — " + str(scores[0]) + " pts | " + str(round(total_times[0], 2)) + "s\n" + \
+                  "Player 2 — " + str(scores[1]) + " pts | " + str(round(total_times[1], 2)) + "s\n\n" + \
+                  "Winner: " + winner + "\n\nClick anywhere to exit."
+
+    final_message = Text(Point(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), result_text)
+    final_message.setSize(22)
+    final_message.setTextColor("darkred")
+    final_message.draw(win)
+
+    win.getMouse()
+    win.close()
+
+main()
